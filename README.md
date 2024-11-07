@@ -1,6 +1,6 @@
 # 🧞 Genie [in a Bottle]: Generative Interactive Environments in PyTorch
 
-This repo is an attempt at reproducibility for _Genie: Generative Interactive Environments_ [Bruce et al. (2024)](https://arxiv.org/abs/2402.15391v1?curius=4125) by Google DeepMind as described in Appendix F in the paper, specifically apapted to run on a single machine with CoinRun data. It builds on the repo that it's forked from, [Open-Genie](https://github.com/myscience/open-genie) but with some modifications to make it useful for teaching about world models and interactive environments.
+This repo is an attempt at reproducibility for _Genie: Generative Interactive Environments_ [Bruce et al. (2024)](https://arxiv.org/abs/2402.15391v1?curius=4125) by Google DeepMind as described in Appendix F in the paper, specifically adapted to run on a single machine with CoinRun data. It builds on the repo that it's forked from, [Open-Genie](https://github.com/myscience/open-genie) but with some modifications to make it useful for teaching about world models and interactive environments.
 
 Per the paper, the goal of the model is to introduce "[...] The first generative interactive environment trained in an unsupervised manner from unlabelled Internet videos".
 
@@ -57,6 +57,9 @@ Then install the remaining dependencies:
 ```bash
 pip install -r requirements.txt
 ```
+
+The original [Open Genie code](https://github.com/myscience/open-genie) was tested with Python 3.11+ and requires `torch 2.0+` (because of use of fast flash-attention).
+
 
 ## Data Collection
 
@@ -335,10 +338,6 @@ assert new_tokes.shape == (batch_size, num_frame + 1, img_size, img_size)
 - [x] Implement the Dynamics Model, which takes past frames and actions and produces the new video frame.
 - [ ] Add functioning training script (Lightning).
 - [ ] Show some results.
-
-# Requirements
-
-Code was tested with Python 3.11+ and requires `torch 2.0+` (because of use of fast flash-attention). To install the required dependencies simply run `pip install -r requirements.txt`
 
 # Citations
 
