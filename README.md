@@ -58,17 +58,17 @@ Then install the remaining dependencies:
 pip install -r requirements.txt
 ```
 
-The original [Open Genie code](https://github.com/myscience/open-genie) was tested with Python 3.11+ and requires `torch 2.0+` (because of use of fast flash-attention).
+The original [Open Genie](https://github.com/myscience/open-genie) was tested with Python 3.11+ and requires `torch 2.0+` (because of use of fast flash-attention).
 
 
 ## Data Collection
 
-Before training the model, you'll need to generate training data. In the Reproducibility statement in  For the CoinRun environment (as specified in the paper), we provide a data collection script:
+Before training the model, you'll need to generate training data. In the Reproducibility statement in the apper, they recommend to sample level seeds between zero and 10,000 and collect 1,000 timesteps for each level, for a total of 10M transitions. For the CoinRun environment (as specified in the paper), we provide a data collection script:
 
 ```bash
 python sample.py \
     --env_name Coinrun \
-    --num_envs 10000 \
+    --num_envs 10 \ 
     --timeout 1000 \
     --root data
 ```
