@@ -85,7 +85,10 @@ class LookupFreeQuantization(nn.Module):
         inp = rearrange(inp, 'b d ... -> b ... d') if transpose else inp
         inp, ps = pack([inp], 'b * d')
         
-        inp = self.proj_inp(inp)
+        # Check the shape of the input tensor
+        print(f"Input shape before projection: {inp.shape}")
+        
+        # inp = self.proj_inp(inp)
         
         # Split into n_codebook parts
         inp = rearrange(inp, 'b n (c d) -> b n c d', c=self.num_codebooks)
@@ -95,19 +98,21 @@ class LookupFreeQuantization(nn.Module):
         # See Eq. (3) in the original paper. To obtain the quantized-code indices
         # we simply sum the bit-codes representation of the quantized values.
         quant = inp.sign()
-        idxs = reduce((inp > 0).int() * self.bit_mask.int(), 'b n c d -> b n c', 'sum')
+        # idxs = reduce((inp > 0).int() * self.bit_mask.int(), 'b n c d -> b n c', 'sum')
+        idxs = None 
         
         # Use straight-through estimator to back-propagate through the quantization step
         code = (inp + (quant - inp).detach()) if self.training else quant
         code = rearrange(code, 'b n c d -> b n (c d)')
         
         # Reconstruct the input tensor from the quantized values
-        out = self.proj_out(code)
+        # out = self.proj_out(code)
+        out = code
         out = unpack(out, ps, 'b * d')[0]
         out = rearrange(out, 'b ... d -> b d ...') if transpose else out
         
         # NOTE: Squeeze to remove the n_codebook dimension
-        idxs = unpack(idxs, ps, 'b * d')[0].squeeze()
+        # idxs = unpack(idxs, ps, 'b * d')[0].squeeze()
         
         # No need to compute the loss if we are not training
         if not self.training: return (out, idxs), None

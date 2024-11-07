@@ -64,6 +64,7 @@ class FrameDiscriminator(nn.Module):
                     n_head=num_heads,
                     d_head=dim_head,
                     d_inp=out_dim,
+                    transpose=True,
                 ),
                 ForwardBlock(
                     in_dim=out_dim,

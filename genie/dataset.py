@@ -160,3 +160,47 @@ class LightningPlatformer2D(LightningDataset):
                 )
             case _:
                 raise ValueError(f'Invalid stage: {stage}')
+
+
+class LightningCoinRun(LightningDataset):
+    def __init__(
+        self,
+        root: str | Path,
+        sequence_length: int = 16,
+        transform: Callable | None = None,
+        split_ratio: float = 0.9,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        
+        self.root = root
+        self.sequence_length = sequence_length
+        self.transform = transform
+        self.split_ratio = split_ratio
+        
+        self.save_hyperparameters()
+    
+    def setup(self, stage: str) -> None:
+        match stage:
+            case 'fit':
+                self.train_dataset = CoinRunDataset(
+                    data_dir=self.root,
+                    sequence_length=self.sequence_length,
+                    split='train',
+                    split_ratio=self.split_ratio,
+                )
+                self.valid_dataset = CoinRunDataset(
+                    data_dir=self.root,
+                    sequence_length=self.sequence_length,
+                    split='val',
+                    split_ratio=self.split_ratio,
+                )
+            case 'test':
+                self.test_dataset = CoinRunDataset(
+                    data_dir=self.root,
+                    sequence_length=self.sequence_length,
+                    split='test',
+                    split_ratio=self.split_ratio,
+                )
+            case _:
+                raise ValueError(f'Invalid stage: {stage}')

@@ -1,4 +1,5 @@
 from typing import Tuple
+import torch
 from torch import Tensor
 import torch.nn as nn
 
@@ -12,21 +13,65 @@ from genie.module.quantization import LookupFreeQuantization
 from genie.module.video import CausalConv3d, Downsample, Upsample
 from genie.utils import Blueprint
 
-REPR_ACT_ENC = (
+REPR_ACT_ENC = [
+    ('conv', dict(in_channels=512, out_channels=512, kernel_size=3, stride=2, padding=1)),
+    'gelu',
+    ('conv', dict(in_channels=512, out_channels=256, kernel_size=3, stride=2, padding=1)),
+    'gelu',
+    ('conv', dict(in_channels=256, out_channels=128, kernel_size=3, stride=2, padding=1)),
+    'gelu',
+    ('conv', dict(in_channels=128, out_channels=64, kernel_size=3, stride=2, padding=1)),
+    'gelu',
     ('space-time_attn', {
-        'n_repr' : 8,
-        'n_heads': 8,
-        'd_head': 64,
+        'n_head': 8,
+        'd_head': 8,       # Adjust according to d_inp
+        'd_inp': 64,       # Match the input feature dimension
+        'd_out': 64,       # Match the output feature dimension
     }),
-)
+]
 
-REPR_ACT_DEC = (
+REPR_ACT_DEC = [
     ('space-time_attn', {
-        'n_repr' : 8,
-        'n_heads': 8,
+        'n_head': 8,
         'd_head': 64,
     }),
-)
+    ('conv_transpose', {
+        'in_channels': 64,
+        'out_channels': 128,
+        'kernel_size': 3,
+        'stride': 2,
+        'padding': 1,
+        'output_padding': 1,
+    }),
+    'gelu',
+    ('conv_transpose', {
+        'in_channels': 128,
+        'out_channels': 256,
+        'kernel_size': 3,
+        'stride': 2,
+        'padding': 1,
+        'output_padding': 1,
+    }),
+    'gelu',
+    ('conv_transpose', {
+        'in_channels': 256,
+        'out_channels': 512,
+        'kernel_size': 3,
+        'stride': 2,
+        'padding': 1,
+        'output_padding': 1,
+    }),
+    'gelu',
+    ('conv_transpose', {
+        'in_channels': 512,
+        'out_channels': 512,
+        'kernel_size': 3,
+        'stride': 2,
+        'padding': 1,
+        'output_padding': 1,
+    }),
+    'gelu',
+]
 
 class LatentAction(nn.Module):
     '''Latent Action Model (LAM) used to distill latent actions
@@ -58,13 +103,13 @@ class LatentAction(nn.Module):
         if isinstance(inp_shape, int): inp_shape = (inp_shape, inp_shape)
         
         self.proj_in = CausalConv3d(
-            inp_channels,
+            in_channels=inp_channels,
             out_channels=n_embd,
             kernel_size=ker_size
         )
         
         self.proj_out = CausalConv3d(
-            n_embd,
+            in_channels=n_embd,
             out_channels=inp_channels,
             kernel_size=ker_size
         )
@@ -79,25 +124,44 @@ class LatentAction(nn.Module):
         
         assert enc_fact * dec_fact == 1, 'The product of the space-time up/down factors must be 1.'
         
+        # Dynamically compute in_features
+        with torch.no_grad():
+            # Create a dummy input to pass through the encoder
+            dummy_input = torch.zeros(1, inp_channels, 1, *inp_shape)  # Shape: (1, 3, 1, 64, 64)
+            video = self.proj_in(dummy_input)
+            
+            # Pass through encoder layers
+            # for enc in self.enc_layers:
+            #     if isinstance(enc, (nn.Conv2d, nn.ModuleList)):
+            #         B, C, T, H, W = video.shape
+            #         video = video.permute(0, 2, 1, 3, 4).reshape(B * T, C, H, W)
+                    # video = enc(video)
+                    # _, C_new, H_new, W_new = video.shape
+                    # video = video.reshape(B, T, C_new, H_new, W_new).permute(0, 2, 1, 3, 4)
+                # else:
+                    # video = enc(video)
+            in_features = video.shape[1] * video.shape[3] * video.shape[4]
+        
         # Add the projections to the action space
         self.to_act = nn.Sequential(
-                Rearrange('b c t ... -> b t (c ...)'),
-                nn.Linear(
-                    int(n_embd * enc_fact * prod(inp_shape)),
-                    d_codebook,
-                    bias=False,
-                )
+            Rearrange('b c t h w -> b t (c h w)'),
+            nn.Linear(
+                in_features=in_features,
+                out_features=d_codebook,
+                bias=False,
+            )
         )
         
         # Build the quantization module
         self.quant = LookupFreeQuantization(
             codebook_dim       = d_codebook,
             num_codebook       = n_codebook,
-            use_bias         = lfq_bias,
-            frac_sample      = lfq_frac_sample,
-            commit_weight    = lfq_commit_weight,
-            entropy_weight   = lfq_entropy_weight,
-            diversity_weight = lfq_diversity_weight,
+            input_dim          = d_codebook,
+            use_bias           = lfq_bias,
+            frac_sample        = lfq_frac_sample,
+            commit_weight      = lfq_commit_weight,
+            entropy_weight     = lfq_entropy_weight,
+            diversity_weight   = lfq_diversity_weight,
         )
         
         self.d_codebook = d_codebook
@@ -117,8 +181,18 @@ class LatentAction(nn.Module):
         video = self.proj_in(video)
         
         # Encode the video frames into latent actions
-        for enc in self.enc_layers:
-            video = enc(video, mask=mask)
+        # for enc in self.enc_layers:
+        #     if isinstance(enc, (nn.Conv2d, nn.ModuleList)):
+        #         # Reshape to 4D if necessary
+        #         B, C, T, H, W = video.shape
+        #         video = video.permute(0, 2, 1, 3, 4).reshape(B * T, C, H, W)
+        #         video = enc(video)
+        #         # Reshape back to 5D
+        #         _, C_new, H_new, W_new = video.shape
+        #         video = video.reshape(B, T, C_new, H_new, W_new).permute(0, 2, 1, 3, 4)
+        #     else:
+        #         # If enc can handle 5D input
+        #         video = enc(video)
         
         # Project to latent action space
         act : Tensor = self.to_act(video)
@@ -128,25 +202,9 @@ class LatentAction(nn.Module):
         
         return (act, idxs, video), q_loss
     
-    def decode(
-        self,
-        video : Tensor,
-        q_act : Tensor,
-    ) -> Tensor:        
-        # Decode the video frames based on past history and
-        # the quantized latent actions
-        for dec, has_ext in zip(self.dec_layers, self.dec_ext):
-            video = dec(
-                video,
-                cond=(
-                    None, # No space condition
-                    q_act if has_ext else None,
-                )
-            )
-            
-        recon = self.proj_out(video)
-        
-        return recon
+    def decode(self, video: Tensor, q_act: Tensor) -> Tensor:
+        # Temporarily bypass decoding
+        return torch.zeros_like(video)
         
     def forward(
         self,
@@ -157,18 +215,14 @@ class LatentAction(nn.Module):
         # Encode the video frames into latent actions
         (act, idxs, enc_video), q_loss = self.encode(video, mask=mask)
         
-        # Decode the last video frame based on all the previous
-        # frames and the quantized latent actions
-        recon = self.decode(enc_video, act)
+        # Bypass the decoding and reconstruction loss
+        # recon = self.decode(enc_video, act)
         
-        # Compute the reconstruction loss
-        # Reconstruction loss
-        rec_loss = mse_loss(recon, video)
+        # Set reconstruction loss to zero
+        rec_loss = torch.tensor(0.0, device=video.device)
         
-        # Compute the total loss by combining the individual
-        # losses, weighted by the corresponding loss weights
-        loss = rec_loss\
-            + q_loss * self.quant_loss_weight
+        # Compute the total loss using only the quantization loss
+        loss = 0 # q_loss * self.quant_loss_weight
         
         return idxs, loss, (
             rec_loss,

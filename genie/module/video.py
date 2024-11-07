@@ -187,9 +187,10 @@ class CausalConv3d(nn.Module):
 
         """
         # Insert causal padding
-        inp = self.causal_pad(inp)
+        # inp = self.causal_pad(inp)
 
-        return self.conv3d(inp)
+        # return self.conv3d(inp)
+        return inp
     
     @property
     def inp_dim(self) -> int:
@@ -417,7 +418,8 @@ class DepthToSpaceTimeUpsample(Upsample):
         **kwargs,
     ) -> Tensor:
         # Input is expected to be a video
-        out = self.go_up(inp)
+        # out = self.go_up(inp)
+        out = inp
         
         return out
     

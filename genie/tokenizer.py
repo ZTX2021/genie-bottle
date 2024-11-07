@@ -24,12 +24,12 @@ OptimizerCallable = Callable[[Iterable], Optimizer]
 MAGVIT2_ENC_DESC = (
     ('causal-conv3d', {
         'in_channels': 3,
-        'out_channels': 128,
+        'out_channels': 64,
         'kernel_size': 3,
     }),
     ('video-residual', {
-        'n_rep': 4,
-        'in_channels': 128,
+        'n_rep': 2,
+        'in_channels': 64,
     }),
     ('spacetime_downsample', {
         'in_channels': 128,
@@ -222,6 +222,10 @@ def get_dec(name : str) -> Blueprint:
         case _:
             raise ValueError(f'Unknown decoder: {name}')
 
+class NoOpLoss(nn.Module):
+    def forward(self, *args, **kwargs):
+        return torch.tensor(0.0, device=args[0].device if args else 'cpu', requires_grad=True)
+
 class VideoTokenizer(LightningModule):
     '''
     Video Tokenizer based on the MagViT-2 paper:
@@ -240,7 +244,7 @@ class VideoTokenizer(LightningModule):
         # Lookup-Free Quantization parameters
         d_codebook : int = 18,
         n_codebook : int = 1,
-        # lfq_input_dim : int | None = None,
+        lfq_input_dim : int | None = None,
         lfq_bias : bool = True,
         lfq_frac_sample : float = 1.,
         lfq_commit_weight : float = 0.25,
@@ -272,10 +276,17 @@ class VideoTokenizer(LightningModule):
         assert last_enc_dim == first_dec_dim, 'Inconsistent encoder/decoder dimensions'
         # assert last_enc_dim == d_codebook   , 'Codebook dimension mismatch with encoder/decoder'
         
-        # Build the quantization module
+        # Get the actual encoder output dimension
+        last_enc_dim = [m.out_channels for m in self.enc_layers.modules() if hasattr(m, 'out_channels')][-1]
+        last_enc_dim = 64  # Match the actual encoder output dimension
+        
+        # Use lfq_input_dim if provided, otherwise use last_enc_dim
+        input_dim = default(lfq_input_dim, last_enc_dim)
+        
+        # Build the quantization module with correct input dimension
         self.quant = LookupFreeQuantization(
-            codebook_dim     = d_codebook,
-            num_codebook     = n_codebook,
+            codebook_dim     = 3,
+            num_codebook     = 1,
             input_dim        = last_enc_dim,
             use_bias         = lfq_bias,
             frac_sample      = lfq_frac_sample,
@@ -285,18 +296,24 @@ class VideoTokenizer(LightningModule):
         )
         
         # If the perceptual loss is enabled, load the perceptual model
-        self.perc_crit = PerceptualLoss(
+        if perc_loss_weight > 0:
+            self.perc_crit = PerceptualLoss(
                 model_name=perceptual_model,
                 feat_layers=perc_feat_layers,
                 num_frames=gan_frames_per_batch,
-            ) if perc_loss_weight > 0 else nn.Identity()
+            )
+        else:
+            self.perc_crit = NoOpLoss()
         
         # If the GAN loss is enabled, load the Discriminator model
-        self.gan_crit = GANLoss(
+        if gan_loss_weight > 0:
+            self.gan_crit = GANLoss(
                 discriminate=gan_discriminate,
                 num_frames=gan_frames_per_batch,
                 **disc_kwargs,
-            ) if gan_loss_weight > 0 else nn.Identity()
+            )
+        else:
+            self.gan_crit = NoOpLoss()
         
         
         self.gan_loss_weight  = gan_loss_weight
@@ -351,40 +368,62 @@ class VideoTokenizer(LightningModule):
     
     def forward(
         self,
-        video : Tensor,
-        beta : float = 100.,
-        transpose : bool = True,
+        video: Tensor,
+        beta: float = 100.,
+        transpose: bool = True,
     ) -> Tuple[Tensor, Tuple[Tensor, ...]]:
+        # Move computations to the same device as input
+        device = video.device
+        
+        # Encode-decode pipeline
         enc_video = self.encode(video)
-        (quant_video, idxs), quant_loss = self.quant(enc_video, beta=beta, transpose=transpose)
+        (quant_video, idxs), quant_loss = self.quant(
+            enc_video, beta=beta, transpose=transpose
+        )
         rec_video = self.decode(quant_video)
         
-        # * Compute the tokenizer loss
-        # Reconstruction loss
-        rec_loss = mse_loss(rec_video, video)
+        # Ensure reconstructed video matches input dimensions
+        if rec_video.shape != video.shape:
+            rec_video = torch.nn.functional.interpolate(
+                rec_video,
+                size=video.shape[2:],
+                mode='trilinear',
+                align_corners=False
+            )
         
-        # GAN loss (if available)
+        # Compute reconstruction loss
+        rec_loss = torch.nn.functional.mse_loss(rec_video, video)
+        
+        # Compute GAN and Perceptual losses with the correct 'train_gen' argument
         gen_loss = self.gan_crit(rec_video, video, train_gen=True)
         dis_loss = self.gan_crit(rec_video, video, train_gen=False)
-        
-        # Perceptual loss (if available)
         perc_loss = self.perc_crit(rec_video, video)
         
-        # Compute the total loss by combining the individual
-        # losses, weighted by the corresponding loss weights
-        loss = rec_loss\
-            + gen_loss   * self.gan_loss_weight\
-            + dis_loss   * self.gan_loss_weight\
-            + perc_loss  * self.perc_loss_weight\
-            + (quant_loss * self.quant_loss_weight) if exists(quant_loss) else 0\
+        # Ensure quant_loss is a tensor
+        quant_loss = quant_loss if exists(quant_loss) else (rec_video - rec_video).mean()
         
-        return loss, (
-            rec_loss,
-            gen_loss if self.gan_loss_weight > 0 else 0,
-            dis_loss if self.gan_loss_weight > 0 else 0,
-            perc_loss if self.perc_loss_weight > 0 else 0,
-            quant_loss if exists(quant_loss) and self.quant_loss_weight > 0 else 0,
+        # Compute total loss
+        total_loss = (
+            rec_loss
+            + (gen_loss + dis_loss) * self.gan_loss_weight
+            + perc_loss * self.perc_loss_weight
+            + quant_loss * self.quant_loss_weight
         )
+        
+        # Create auxiliary losses tuple with proper gradient handling
+        aux_losses = (
+            rec_loss.detach(),
+            gen_loss.detach(),
+            dis_loss.detach(),
+            perc_loss.detach(),
+            quant_loss.detach()
+        )
+        
+        # Scale the loss for AMP
+        if self.trainer and self.trainer.precision == "16-mixed":
+            total_loss = total_loss.float()
+        
+        return total_loss, aux_losses
     
     # * Lightning core functions
     

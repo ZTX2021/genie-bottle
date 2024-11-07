@@ -51,6 +51,15 @@ def get_module(name : str) -> nn.Module:
             return DepthToSpaceTimeUpsample
         case 'spacetime_downsample':
             return SpaceTimeDownsample
+        # * Basic convolution modules
+        case 'conv':
+            return nn.Conv2d
+        case 'conv3d':
+            return nn.Conv3d
+        case 'conv_transpose':
+            return nn.ConvTranspose2d
+        case 'conv3d_transpose':
+            return nn.ConvTranspose3d
         # * Norm modules
         case 'group_norm':
             return nn.GroupNorm

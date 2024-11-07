@@ -9,3 +9,5 @@
 *log*
 *.local*
 test/.*
+data/*
+config/*.local.yaml

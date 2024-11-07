@@ -1,0 +1,25 @@
+# Add directories or file patterns to ignore during indexing (e.g. foo/ or *.csv)
+*.mp4
+*.gif
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.webm
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.avi
+*.mov
+*.mkv
+*.wmv
+*.m4v
+*.mpg
+*.mpeg
+*.mp4v
+*.m4v
+*.mp4a
+*.m4a
+*.mp4b
+*.m4b

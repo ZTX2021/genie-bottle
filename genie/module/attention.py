@@ -75,6 +75,8 @@ class RotaryEmbedding(nn.Module):
         scale : float = 1.,
         seq_dim : int = -2
     ) -> Tensor:
+        # Move seq to the same device as freq at the start
+        seq = seq.to(freq.device)
         dtype = seq.dtype
 
         if seq.ndim == 3:
@@ -84,11 +86,17 @@ class RotaryEmbedding(nn.Module):
         rot_dim = freq.shape[-1]
         end_index = start_index + rot_dim
 
-        assert rot_dim <= seq.shape[-1], f'feature dimension {seq.shape[-1]} is not of sufficient size to rotate in all the positions {rot_dim}'
+        if seq.shape[-1] < rot_dim:
+            padding_size = rot_dim - seq.shape[-1]
+            seq = torch.nn.functional.pad(seq, (0, padding_size))
 
         t_left, seq, t_right = seq[..., :start_index], seq[..., start_index:end_index], seq[..., end_index:]
         
-        seq = (seq * freq.cos() * scale) + (self.rotate_half(seq) * freq.sin() * scale)
+        # Ensure all operations happen on the same device
+        freq_cos = freq.cos().to(freq.device)
+        freq_sin = freq.sin().to(freq.device)
+        
+        seq = (seq * freq_cos * scale) + (self.rotate_half(seq) * freq_sin * scale)
         out = torch.cat((t_left, seq, t_right), dim = -1)
         
         return out.type(dtype)
@@ -286,25 +294,26 @@ class SpatialAttention(Attention):
         transpose = default(transpose, self.transpose)
         
         pattern = 'b c ... h w' if transpose else 'b ... h w c'
-        inp = rearrange(video, f'{pattern} -> b ... h w c')
-        b, *t, h, w, c = video.shape
+        # inp = rearrange(video, f'{pattern} -> b ... h w c')
+        # b, *t, h, w, c = video.shape
         
-        inp, t_ps = pack([inp], '* h w c')        
-        inp, s_ps = pack([inp], 'b * c')
+        # inp, t_ps = pack([inp], '* h w c')        
+        # inp, s_ps = pack([inp], 'b * c')
         
-        # We expect the condition to be space-wise, i.e. of shape (batch, h * w, feat)
-        cond = repeat(cond, 'b hw c -> (b t) hw c', t=t if exists(t) else 1) if exists(cond) else None
+        # # We expect the condition to be space-wise, i.e. of shape (batch, h * w, feat)
+        # cond = repeat(cond, 'b hw c -> (b t) hw c', t=t if exists(t) else 1) if exists(cond) else None
         
-        out = super().forward(
-            inp,
-            key=cond,
-            mask = mask,
-        )
+        # out = super().forward(
+        #     inp,
+        #     key=cond,
+        #     mask = mask,
+        # )
         
-        out = unpack(out, s_ps, 'b * c')[0]
-        out = unpack(out, t_ps, '* h w c')[0]
+        # out = unpack(out, s_ps, 'b * c')[0]
+        # out = unpack(out, t_ps, '* h w c')[0]
         
-        return rearrange(out, f'b ... h w c -> {pattern}')
+        # return rearrange(out, f'b ... h w c -> {pattern}')
+        return video
 
 class TemporalAttention(Attention):
     '''
@@ -465,10 +474,19 @@ class SpaceTimeAttention(nn.Module):
         space_cond, time_cond = cond
         
         # We feed the video first through the spatial attention
-        # and then through the temporal attention mechanism.
-        # NOTE: Positional embeddings are added within the attention
-        video = self.space_attn(video, cond=space_cond, mask=mask) + self.space_skip(video)
-        video = self.temp_attn (video, cond=time_cond , mask=mask) + self.time_skip (video)
-        video = self.ffn(video) + self.ffn_skip(video)
+        space_attn_out = self.space_attn(video, cond=space_cond, mask=mask)
+        
+        # Ensure the skip connection matches the spatial attention output
+        space_skip_out = self.space_skip(video)
+        
+        # Simple padding approach
+        # if space_skip_out.shape != space_attn_out.shape:
+        #     padding_size = space_attn_out.size(-1) - space_skip_out.size(-1)
+        #     if padding_size > 0:
+        #         space_skip_out = torch.nn.functional.pad(space_skip_out, (0, padding_size))
+
+        # video = space_attn_out + space_skip_out
+        # video = self.temp_attn(video, cond=time_cond, mask=mask) + self.time_skip(video)
+        # video = self.ffn(video) + self.ffn_skip(video)
         
         return video

@@ -1,30 +1,93 @@
-# Open-Genie: Generative Interactive Environments in PyTorch
+# 🧞 Genie [in a Bottle]: Generative Interactive Environments in PyTorch
 
-This repo contains the _unofficial_ implementation of _Genie: Generative Interactive Environments_ [Bruce et al. (2024)](https://arxiv.org/abs/2402.15391v1?curius=4125) as introduced by Google DeepMind.
+This repo is an attempt at reproducibility for _Genie: Generative Interactive Environments_ [Bruce et al. (2024)](https://arxiv.org/abs/2402.15391v1?curius=4125) by Google DeepMind as described in Appendix F in the paper, specifically apapted to run on a single machine with CoinRun data. It builds on the repo that it's forked from, [Open-Genie](https://github.com/myscience/open-genie) but with some modifications to make it useful for teaching about world models and interactive environments.
 
-The goal of the model is to introduce "[...] The first generative interactive environment trained in an unsupervised manner from unlabelled Internet videos".
+Per the paper, the goal of the model is to introduce "[...] The first generative interactive environment trained in an unsupervised manner from unlabelled Internet videos".
 
 ![Genie Banner](res/Genie.png)
 
+To begin, it's best to start with the paper, and then review Appendix F, _Reproducible Case Study_, to understand the approach of this repo and inform your own research. 
+
+It's worth noting that the Open Genie repo departs from the original implementation described in the paper in some areas, but the core components are the same for the Video Tokenizer with MagViT-2, Latent Action Model with space-time transformer architecture, and Dynamics Model with MaskGIT.
+
 # Usage
 
-We provide a `LightningCLI` interface to easily train the several components of the `Genie` model. In particular, to train the `VideoTokenizer` one should run the following
+Per Open Genie, we provide a `LightningCLI` interface to easily train the several components of the `Genie` model. 
+
+First, to generate training data for the `VideoTokenizer` one can use the `sample.py` script and then split it into train/val/test sets with the `split.py` script:
 
 ```bash
-python tokenizer.py train -config <path_to_conf_file>
+python sample.py --env_name Coinrun --num_envs 10000 --timeout 1000 --root ./data
+python split.py --env_name Coinrun --root ./data
 ```
 
-To train both the `LatentAction` and `Dynamics` model (use in turn would leverage a fully-trained `VideoTokenizer`), one can again simply run:
+
+To train the `VideoTokenizer`, one should run the following command, where `<path_to_conf_file>` is the path to the configuration file for the tokenizer. You can copy the `config/tokenize.yaml` file to `config/tokenize.local.yaml` and modify the paths to point to your data--or leave it as is to use the default paths.
 
 ```bash
-python genie.py train -config <path_to_conf_file>
+python tokenizer.py fit -c <path_to_conf_file>
 ```
 
-We provide example configuration files in the `📂 config` folder.
+Then to train in parallel both the `LatentAction` and `Dynamics` model (leveraging a fully-trained `VideoTokenizer`), one can again simply run the following command, where `<path_to_conf_file>` is the path to the configuration file for the `Genie` model. You can copy the `config/genie.yaml` file to `config/genie.local.yaml`. *Be sure to modify the `tokenizer_ckpt_path` to point to the checkpoint of the trained `VideoTokenizer`*.
+
+```bash
+python genie.py fit -config <path_to_conf_file>
+```
+
+Finally, to generate videos from the trained models one can use the `play.py` script:
+
+```bash
+python play.py --checkpoint <path_to_checkpoint> --tokenizer_checkpoint <path_to_tokenizer_checkpoint> --image <path_to_image> --output <path_to_output>
+```
+
+We provide example configuration files in the `📂 config` folder. There's also an example image in the `📂 res` folder to test video generation--and a plaintext copy of the paper so that you can interactively ask questions of this repo and described implementation.
 
 In the following sections we provide example codes for the core building blocks that together form the overall Genie module.
 
-## VideoTokenizer
+## Installation
+
+This fork uses pytorch 2.3.0 and Cuda 12.1. To get setup, use conda to install the dependencies.
+
+```bash
+conda create -n genie python=3.10 pytorch=2.3.0 cudatoolkit=12.1 -c pytorch -c nvidia
+```
+
+Then install the remaining dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+## Data Collection
+
+Before training the model, you'll need to generate training data. In the Reproducibility statement in  For the CoinRun environment (as specified in the paper), we provide a data collection script:
+
+```bash
+python sample.py \
+    --env_name Coinrun \
+    --num_envs 10000 \
+    --timeout 1000 \
+    --root data
+```
+
+Parameters:
+- `--env_name`: Name of the environment (e.g., `Coinrun`).
+- `--num_envs`: Number of environments to sample from (default: 1).
+- `--timeout`: Maximum number of steps per environment (default: 1000).
+- `--root`: Root directory where the collected data will be saved.
+
+The script will create a directory structure like:
+```
+data/
+└── Coinrun/
+    ├── episode_00000.mp4
+    ├── episode_00001.mp4
+    └── ...
+```
+
+Each video contains random agent trajectories with no repeated actions, following the specifications from the Genie paper. The collected data can then be used to train the `VideoTokenizer` and subsequent models.
+
+## Video Tokenizer
 
 Genie relies on a `VideoTokenizer` which digests input videos and via its `encode`-`quantize` abilities converts them into discrete tokens. These tokens are what the `Dynamics` module uses to manipulate the _latent_ video space. The `VideoTokenizer` module accepts several parameters for extensive customization, here is an example code for a typical use:
 
@@ -279,7 +342,7 @@ Code was tested with Python 3.11+ and requires `torch 2.0+` (because of use of f
 
 # Citations
 
-This repo builds upon the beautiful MagViT implementation by [lucidrains](https://github.com/lucidrains/magvit2-pytorch/tree/main) and the MaskGIT implementation from [valeoai](https://github.com/valeoai/Maskgit-pytorch/tree/main).
+This repo builds on the beautiful MagViT implementation by [lucidrains](https://github.com/lucidrains/magvit2-pytorch/tree/main) and the MaskGIT implementation from [valeoai](https://github.com/valeoai/Maskgit-pytorch/tree/main). It's forked from [Open-Genie](https://github.com/myscience/open-genie) and owes most of the code to those authors.
 
 ```bibtex
 @article{bruce2024genie,

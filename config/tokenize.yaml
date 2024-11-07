@@ -25,7 +25,7 @@ model:
         space_factor : 2
   disc_kwargs:
     inp_size: [64, 64] # Size of input frames
-    model_dim: 64 # Dimension of the model
+    model_dim: 32 # Dimension of the model
     dim_mults: [1, 2, 4] # Channel multipliers
     down_step: [null, 2, 2] # Down-sampling steps
     inp_channels: 3
@@ -34,10 +34,10 @@ model:
     act_fn: leaky # Use LeakyReLU as activation function
     use_blur: True # Use BlurPooling for down-sampling
     use_attn: True # Discriminator can have spatial attention
-    num_heads: 4 # Number of (spatial) attention heads
-    dim_head: 32 # Dimension of each spatial attention heads
+    num_heads: 2 # Number of (spatial) attention heads
+    dim_head: 16 # Dimension of each spatial attention heads
   #
-  d_codebook: 10
+  d_codebook: 2
   n_codebook: 1
   #
   lfq_bias: True
@@ -56,29 +56,29 @@ model:
   perc_feat_layers: [features.6, features.13, features.18, features.25]
   gan_discriminate: frames
   gan_frames_per_batch: 4
-  gan_loss_weight: 1.
-  perc_loss_weight: 1.
-  quant_loss_weight: 1.
+  gan_loss_weight: 0.1
+  perc_loss_weight: 0.1
+  quant_loss_weight: 1.0
 
 data:
-  root: path/to/data
+  root: ./data
   env_name: Coinrun
   padding: none
   randomize: true
   transform: null
-  num_frames: 64
-  batch_size: 32
+  num_frames: 2
+  batch_size: 2
   output_format: c t h w
 
 trainer:
-  max_epochs: 40
+  max_epochs: 8
   accelerator: gpu
   devices: 1
-  strategy: ddp_find_unused_parameters_false
+  strategy: auto
   precision: 16-mixed
   log_every_n_steps: 16
   limit_val_batches: 32
-  val_check_interval: 32
+  val_check_interval: null 
   callbacks:
     - class_path: lightning.pytorch.callbacks.ModelCheckpoint
       init_args:
@@ -87,6 +87,6 @@ trainer:
   logger:
     - class_path: lightning.pytorch.loggers.TensorBoardLogger
       init_args:
-        save_dir: path/to/log
+        save_dir: data/log
         name: genie-tokenizer
         version: null

@@ -23,6 +23,10 @@ from typing import Callable
 from genie.utils import default, exists
 from genie.utils import default_iterdata_worker_init
 
+# Define identity function at the module level
+def identity(x):
+    return x
+
 class LightningDataset(LightningDataModule):
     '''
         Abstract Lightning Data Module that represents a dataset we
@@ -157,7 +161,9 @@ class Platformer2D(Dataset):
         self.randomize = randomize
         self.num_frames = num_frames
         self.output_format = output_format
-        self.transform = transform if exists(transform) else lambda x: x
+        # Use the identity function instead of a local lambda
+        self.transform = transform if exists(transform) else identity
+   
         
         # Get all the file path based on the split
         self.file_names = [

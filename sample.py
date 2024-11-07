@@ -6,7 +6,7 @@ from os import makedirs
 import argparse
 from tqdm.auto import trange
 
-ROOT='path/to/data'
+ROOT='./data'
 
 def save_frames_to_video(frames, output_file, fps=30):
     # Get the shape of the frame to set the video width and height
@@ -47,7 +47,7 @@ def main(args):
         
         env.close()
         
-        savepath = path.join(args.root, env_name, f'{str(seed).zfill(4)}.mp4')
+        savepath = path.join(args.root, env_name, 'source', f'{str(seed).zfill(4)}.mp4')
         makedirs(path.dirname(savepath), exist_ok=True)
         
         save_frames_to_video(frames, savepath)
