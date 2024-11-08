@@ -40,6 +40,8 @@ Finally, to generate videos from the trained models one can use the `play.py` sc
 python play.py --checkpoint <path_to_checkpoint> --tokenizer_checkpoint <path_to_tokenizer_checkpoint> --image <path_to_image> --output <path_to_output>
 ```
 
+Note, this will only currently generate the sample data for the [workshop](https://github.com/sakomws/ai-workshop/tree/main/sessions/08_interactive_envs).
+
 We provide example configuration files in the `📂 config` folder. There's also an example image in the `📂 res` folder to test video generation--and a plaintext copy of the paper so that you can interactively ask questions of this repo and described implementation.
 
 In the following sections we provide example codes for the core building blocks that together form the overall Genie module.
@@ -48,13 +50,18 @@ In the following sections we provide example codes for the core building blocks 
 
 This fork uses pytorch 2.3.0 and Cuda 12.1. To get setup, use conda to install the dependencies.
 
+### Option 1: Using environment.yml
+
+```bash
+conda env create -f environment.yml
+conda activate genie
+pip install -r requirements.txt
+```
+### Option 2: Manual Creation
+
 ```bash
 conda create -n genie python=3.10 pytorch=2.3.0 cudatoolkit=12.1 -c pytorch -c nvidia
-```
-
-Then install the remaining dependencies:
-
-```bash
+conda activate genie
 pip install -r requirements.txt
 ```
 
