@@ -48,7 +48,7 @@ In the following sections we provide example codes for the core building blocks 
 
 ## Installation
 
-This fork uses pytorch 2.3.0 and Cuda 12.1. To get setup, use conda to install the dependencies.
+This fork uses pytorch 2.3.0 and Cuda 12.1. To get setup, use conda and pip to install the dependencies. I added a separate `requirements_osx.txt` file for the Mac-specific dependencies if you run into issues with the default `requirements.txt` file that I used during development. 
 
 ### Option 1: Using environment.yml
 
@@ -67,35 +67,6 @@ pip install -r requirements.txt
 
 The original [Open Genie](https://github.com/myscience/open-genie) was tested with Python 3.11+ and requires `torch 2.0+` (because of use of fast flash-attention).
 
-
-## Data Collection
-
-Before training the model, you'll need to generate training data. In the Reproducibility statement in the apper, they recommend to sample level seeds between zero and 10,000 and collect 1,000 timesteps for each level, for a total of 10M transitions. For the CoinRun environment (as specified in the paper), we provide a data collection script:
-
-```bash
-python sample.py \
-    --env_name Coinrun \
-    --num_envs 10 \ 
-    --timeout 1000 \
-    --root data
-```
-
-Parameters:
-- `--env_name`: Name of the environment (e.g., `Coinrun`).
-- `--num_envs`: Number of environments to sample from (default: 1).
-- `--timeout`: Maximum number of steps per environment (default: 1000).
-- `--root`: Root directory where the collected data will be saved.
-
-The script will create a directory structure like:
-```
-data/
-└── Coinrun/
-    ├── episode_00000.mp4
-    ├── episode_00001.mp4
-    └── ...
-```
-
-Each video contains random agent trajectories with no repeated actions, following the specifications from the Genie paper. The collected data can then be used to train the `VideoTokenizer` and subsequent models.
 
 ## Video Tokenizer
 
