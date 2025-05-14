@@ -7,7 +7,7 @@
 
 *egg*
 *log*
-*.local*
+# *.local*
 test/.*
 data/*
-config/*.local.yaml
+# config/*.local.yaml
